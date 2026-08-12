@@ -7,7 +7,7 @@ import { Server } from 'socket.io'
 type Choice = 'like' | 'nope'
 type Filters = { country: 'all' | 'RU' | 'US'; genres: number[]; kind: 'movie' | 'tv' | 'both' }
 type Selection = { page: number; seed: number }
-type Room = { players: Set<string>; swipes: Map<string, Map<string, Choice>>; preferences: Map<string, number[]>; filters: Filters; selection: Selection }
+type Room = { players: Set<string>; swipes: Map<string, Map<string, Choice>>; preferences: Map<string, number[]>; filters: Filters; filterChoices: Map<string, Filters>; filterSubmissions: Set<string>; selection: Selection }
 
 // HTTP health check and WebSocket server share the same port.
 const app = express()
@@ -64,7 +64,7 @@ io.on('connection', socket => {
     const code = makeCode()
     const safeFilters: Filters = { country: ['all', 'RU', 'US'].includes(filters?.country) ? filters.country : 'all', genres: (filters?.genres || []).filter(id => Number.isInteger(id)).slice(0, 8), kind: ['movie', 'tv', 'both'].includes(filters?.kind) ? filters.kind : 'movie' }
     const selection: Selection = { page: Math.floor(Math.random() * 20) + 1, seed: Math.floor(Math.random() * 2 ** 31) }
-    rooms.set(code, { players: new Set([socket.id]), swipes: new Map(), preferences: new Map(), filters: safeFilters, selection })
+    rooms.set(code, { players: new Set([socket.id]), swipes: new Map(), preferences: new Map(), filterChoices: new Map([[socket.id, safeFilters]]), filterSubmissions: new Set(), filters: safeFilters, selection })
     socket.join(code)
     socket.data.roomCode = code
     reply({ code, selection })
@@ -81,6 +81,27 @@ io.on('connection', socket => {
     socket.data.roomCode = code
     reply({ code, players: room.players.size, filters: room.filters, selection: room.selection })
     broadcastRoom(code)
+  })
+
+  // Each player confirms their own filters. No creator preference receives special priority.
+  socket.on('set-room-filters', ({ roomCode, filters }: { roomCode: string; filters: Filters }) => {
+    const room = rooms.get(roomCode)
+    if (!room || !room.players.has(socket.id)) return
+    const safeFilters: Filters = { country: ['all', 'RU', 'US'].includes(filters?.country) ? filters.country : 'all', genres: (filters?.genres || []).filter(id => Number.isInteger(id)).slice(0, 8), kind: ['movie', 'tv', 'both'].includes(filters?.kind) ? filters.kind : 'movie' }
+    room.filterChoices.set(socket.id, safeFilters)
+    room.filterSubmissions.add(socket.id)
+    if (room.filterSubmissions.size !== 2) return
+
+    const [first, second] = [...room.filterChoices.values()]
+    const sharedGenres = first.genres.filter(id => second.genres.includes(id))
+    const merged: Filters = {
+      kind: first.kind === second.kind ? first.kind : 'both',
+      country: first.country === second.country ? first.country : first.country === 'all' ? second.country : second.country === 'all' ? first.country : 'all',
+      // A blank genre list means no restriction; otherwise use only genres both selected.
+      genres: first.genres.length === 0 ? second.genres : second.genres.length === 0 ? first.genres : sharedGenres,
+    }
+    room.filters = merged
+    io.to(roomCode).emit('filters-ready', { filters: merged })
   })
 
   socket.on('swipe', ({ roomCode, movieId, choice }: { roomCode: string; movieId: string; choice: Choice }) => {
@@ -116,6 +137,8 @@ io.on('connection', socket => {
     if (!room) return
     room.players.delete(socket.id)
     room.preferences.delete(socket.id)
+    room.filterChoices.delete(socket.id)
+    room.filterSubmissions.delete(socket.id)
     if (room.players.size === 0) rooms.delete(roomCode)
     else broadcastRoom(roomCode)
   })

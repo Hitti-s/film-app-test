@@ -20,10 +20,15 @@ const fallbackMovies: Movie[] = [
   }
 ]
 
+/** Shared controls used by both people to describe their desired movie night. */
+function FilterControls({ filters, setFilters }: { filters: MovieFilters; setFilters: (filters: MovieFilters) => void }) {
+  const toggleGenre = (id: number) => setFilters({ ...filters, genres: filters.genres.includes(id) ? filters.genres.filter(genre => genre !== id) : [...filters.genres, id] })
+  return <div className="filters"><div className="filter-title">Подобрать что посмотреть</div><div className="filter-row"><span>Тип</span><div className="filter-options">{([['movie', 'Фильмы'], ['tv', 'Сериалы'], ['both', 'Всё']] as const).map(([value, label]) => <button key={value} className={filters.kind === value ? 'selected' : ''} onClick={() => setFilters({ ...filters, kind: value })}>{label}</button>)}</div></div><div className="filter-row"><span>Страна</span><div className="filter-options">{([['all', 'Все'], ['RU', 'Россия'], ['US', 'США']] as const).map(([value, label]) => <button key={value} className={filters.country === value ? 'selected' : ''} onClick={() => setFilters({ ...filters, country: value })}>{label}</button>)}</div></div><div className="filter-row genre-row"><span>Жанры</span><div className="filter-options">{availableGenres.map(genre => <button key={genre.id} className={filters.genres.includes(genre.id) ? 'selected' : ''} onClick={() => toggleGenre(genre.id)}>{genre.name}</button>)}</div></div></div>
+}
+
 /** The room entry screen also owns the filters chosen by the room creator. */
 function Home({ onCreate, onJoin, filters, setFilters }: { onCreate: () => void; onJoin: (code: string) => void; filters: MovieFilters; setFilters: (filters: MovieFilters) => void }) {
   const [code, setCode] = useState('')
-  const toggleGenre = (id: number) => setFilters({ ...filters, genres: filters.genres.includes(id) ? filters.genres.filter(genre => genre !== id) : [...filters.genres, id] })
   return <main className="landing">
     <div className="ambient ambient-one" /><div className="ambient ambient-two" />
     <nav><div className="brand"><span className="brand-mark">M</span>MovieMatch</div><span className="tag">найдите фильм вместе</span></nav>
@@ -31,7 +36,7 @@ function Home({ onCreate, onJoin, filters, setFilters }: { onCreate: () => void;
       <div className="eyebrow"><span /> Вечер кино без споров</div>
       <h1>Один свайп —<br /><em>общий фильм.</em></h1>
       <p>Выбирайте фильмы вместе с другом. Когда ваши вкусы совпадут — MovieMatch покажет идеальный вариант.</p>
-      <div className="filters"><div className="filter-title">Подобрать что посмотреть</div><div className="filter-row"><span>Тип</span><div className="filter-options">{([['movie', 'Фильмы'], ['tv', 'Сериалы'], ['both', 'Всё']] as const).map(([value, label]) => <button key={value} className={filters.kind === value ? 'selected' : ''} onClick={() => setFilters({ ...filters, kind: value })}>{label}</button>)}</div></div><div className="filter-row"><span>Страна</span><div className="filter-options">{([['all', 'Все'], ['RU', 'Россия'], ['US', 'США']] as const).map(([value, label]) => <button key={value} className={filters.country === value ? 'selected' : ''} onClick={() => setFilters({ ...filters, country: value })}>{label}</button>)}</div></div><div className="filter-row genre-row"><span>Жанры</span><div className="filter-options">{availableGenres.map(genre => <button key={genre.id} className={filters.genres.includes(genre.id) ? 'selected' : ''} onClick={() => toggleGenre(genre.id)}>{genre.name}</button>)}</div></div></div>
+      <FilterControls filters={filters} setFilters={setFilters} />
       <div className="start-card">
         <button className="primary" onClick={onCreate}>Создать комнату <b>→</b></button>
         <div className="or"><span />или<span /></div>
@@ -41,6 +46,13 @@ function Home({ onCreate, onJoin, filters, setFilters }: { onCreate: () => void;
     </section>
     <footer>MovieMatch <span>·</span> выбирайте то, что хочется смотреть</footer>
   </main>
+}
+
+/** Both people confirm filters separately; the server then produces a fair combined set. */
+function Filters({ filters, setFilters, onSubmit }: { filters: MovieFilters; setFilters: (filters: MovieFilters) => void; onSubmit: () => void }) {
+  const [submitted, setSubmitted] = useState(false)
+  const submit = () => { setSubmitted(true); onSubmit() }
+  return <main className="filter-page"><nav><div className="brand"><span className="brand-mark">M</span>MovieMatch</div><span className="tag">общая подборка</span></nav><section className="filter-content"><div className="eyebrow"><span /> Ваши условия</div><h1>Что хочется<br /><em>смотреть сегодня?</em></h1><p>Выберите свои фильтры. Когда второй участник подтвердит выбор, мы объединим ваши предпочтения.</p><FilterControls filters={filters} setFilters={setFilters} /><button className="primary filter-submit" disabled={submitted} onClick={submit}>{submitted ? 'Ждём выбор напарника…' : 'Подтвердить выбор'} <b>→</b></button></section></main>
 }
 
 /** Shows the room code until the second participant joins. */
@@ -88,7 +100,7 @@ function Match({ movie, onContinue }: { movie: Movie; onContinue: () => void }) 
 
 /** Coordinates screens, shared room state, and all Socket.IO events. */
 export default function App() {
-  const [screen, setScreen] = useState<'home' | 'room' | 'taste' | 'discover' | 'match'>('home')
+  const [screen, setScreen] = useState<'home' | 'room' | 'filters' | 'taste' | 'discover' | 'match'>('home')
   const [movies, setMovies] = useState<Movie[]>(fallbackMovies)
   const [matchedMovie, setMatchedMovie] = useState<Movie>(fallbackMovies[0])
   const [code, setCode] = useState('')
@@ -113,10 +125,16 @@ export default function App() {
       setSuggestedGenres(genreIds)
       getPopularMovies(effectiveFilters, selection).then(films => { if (films.length) setMovies(films) }).catch(() => undefined).finally(() => setScreen('discover'))
     }
+    const handleFilters = ({ filters: mergedFilters }: { filters: MovieFilters }) => {
+      setFilters(mergedFilters)
+      setSuggestedGenres([])
+      getPopularMovies(mergedFilters, selection).then(films => { if (films.length) setMovies(films) }).catch(() => undefined).finally(() => setScreen('taste'))
+    }
     socket.on('room-state', handleRoom)
     socket.on('match', handleMatch)
     socket.on('preferences-ready', handlePreferences)
-    return () => { socket.off('room-state', handleRoom); socket.off('match', handleMatch); socket.off('preferences-ready', handlePreferences) }
+    socket.on('filters-ready', handleFilters)
+    return () => { socket.off('room-state', handleRoom); socket.off('match', handleMatch); socket.off('preferences-ready', handlePreferences); socket.off('filters-ready', handleFilters) }
   }, [movies, filters, selection])
   const createRoom = () => socket.emit('create-room', filters, (result: { code?: string; selection?: MovieSelection; error?: string }) => {
     if (result.error || !result.code) return window.alert(result.error || 'Не удалось создать комнату')
@@ -126,14 +144,14 @@ export default function App() {
   const joinRoom = (roomCode: string) => socket.emit('join-room', roomCode, (result: { code?: string; players?: number; filters?: MovieFilters; selection?: MovieSelection; error?: string }) => {
     if (result.error || !result.code) return window.alert(result.error || 'Не удалось войти в комнату')
     setCode(result.code); setPlayers(result.players || 2)
-    if (!result.filters || !result.selection) return setScreen('taste')
-    setFilters(result.filters)
-    setSelection(result.selection)
-    getPopularMovies(result.filters, result.selection).then(films => { if (films.length) setMovies(films) }).catch(() => undefined).finally(() => setScreen('taste'))
+    if (result.selection) setSelection(result.selection)
+    setScreen('filters')
   })
+  const submitFilters = () => socket.emit('set-room-filters', { roomCode: code, filters })
   const submitTaste = (genreIds: number[]) => socket.emit('set-preferences', { roomCode: code, genreIds })
   const sendSwipe = (movie: Movie, choice: 'like' | 'nope') => socket.emit('swipe', { roomCode: code, movieId: movie.id, choice })
-  if (screen === 'room') return <Room code={code} players={players} onStart={() => setScreen('taste')} />
+  if (screen === 'room') return <Room code={code} players={players} onStart={() => setScreen('filters')} />
+  if (screen === 'filters') return <Filters filters={filters} setFilters={setFilters} onSubmit={submitFilters} />
   if (screen === 'taste') return <Taste movies={movies} onSubmit={submitTaste} />
   if (screen === 'discover') return <Discover movies={movies} code={code} onSwipe={sendSwipe} />
   if (screen === 'match') return <Match movie={matchedMovie} onContinue={() => setScreen('discover')} />

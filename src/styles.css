@@ -37,7 +37,6 @@ button{
   padding:28px max(6vw,28px);
   display:flex;
   flex-direction:column
-  
 }
 
 .ambient{
@@ -745,6 +744,53 @@ footer span{
   color:#f7f5f1
 }
 
+/* Screen where each participant confirms their own room filters. */
+.filter-page{
+  min-height:100vh;
+  padding:28px max(6vw,28px);
+  background:radial-gradient(circle at 75% 0,#382344 0,transparent 36%),#08080d;
+  color:#f7f5f1;
+}
+
+.filter-content{
+  width:min(620px,100%);
+  margin:10vh auto;
+}
+
+.filter-content h1{
+  margin:18px 0;
+  font-size:clamp(40px,6vw,66px);
+  line-height:1;
+  letter-spacing:-.07em;
+}
+
+.filter-content h1 em{
+  font-family:Playfair Display,serif;
+  font-weight:600;
+  color:#ffa38d;
+}
+
+.filter-content>p{
+  max-width:520px;
+  color:#aaa6b0;
+  font-size:14px;
+  line-height:1.65;
+}
+
+.filter-content .filters{
+  margin-top:28px;
+}
+
+.filter-submit{
+  width:min(360px,100%);
+  margin:22px auto 0;
+}
+
+.filter-submit:disabled{
+  cursor:default;
+  opacity:.55;
+}
+
 .taste-content{
   width:min(760px,100%);
   margin:7vh auto
@@ -894,4 +940,3 @@ footer span{
 
 
 }
-
