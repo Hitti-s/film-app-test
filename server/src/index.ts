@@ -5,6 +5,7 @@ import { createServer } from 'node:http'
 import { Server } from 'socket.io'
 
 type Choice = 'like' | 'nope'
+const MAX_PLAYERS = 5
 type Filters = { country: 'all' | 'RU' | 'US'; genres: number[]; kind: 'movie' | 'tv' | 'both' }
 type Selection = { page: number; seed: number }
 type Preference = { genreIds: number[]; movieIds: string[] }
@@ -76,7 +77,7 @@ io.on('connection', socket => {
     const code = rawCode.trim().toUpperCase()
     const room = rooms.get(code)
     if (!room) return reply({ error: 'Комната не найдена. Проверь код.' })
-    if (room.players.size >= 2) return reply({ error: 'В комнате уже два человека.' })
+    if (room.players.size >= MAX_PLAYERS) return reply({ error: 'В комнате уже максимальное число участников — 5.' })
     room.players.add(socket.id)
     socket.join(code)
     socket.data.roomCode = code
@@ -91,15 +92,16 @@ io.on('connection', socket => {
     const safeFilters: Filters = { country: ['all', 'RU', 'US'].includes(filters?.country) ? filters.country : 'all', genres: (filters?.genres || []).filter(id => Number.isInteger(id)).slice(0, 8), kind: ['movie', 'tv', 'both'].includes(filters?.kind) ? filters.kind : 'movie' }
     room.filterChoices.set(socket.id, safeFilters)
     room.filterSubmissions.add(socket.id)
-    if (room.filterSubmissions.size !== 2) return
+    if (room.filterSubmissions.size !== room.players.size) return
 
-    const [first, second] = [...room.filterChoices.values()]
-    const sharedGenres = first.genres.filter(id => second.genres.includes(id))
+    const choices = [...room.filterChoices.values()]
+    const [first, ...others] = choices
+    const sharedGenres = first.genres.filter(id => others.every(choice => choice.genres.includes(id)))
     const merged: Filters = {
-      kind: first.kind === second.kind ? first.kind : 'both',
-      country: first.country === second.country ? first.country : first.country === 'all' ? second.country : second.country === 'all' ? first.country : 'all',
+      kind: choices.every(choice => choice.kind === first.kind) ? first.kind : 'both',
+      country: choices.every(choice => choice.country === first.country) ? first.country : 'all',
       // A blank genre list means no restriction; otherwise use only genres both selected.
-      genres: first.genres.length === 0 ? second.genres : second.genres.length === 0 ? first.genres : sharedGenres,
+      genres: choices.some(choice => choice.genres.length === 0) ? [] : sharedGenres,
     }
     room.filters = merged
     io.to(roomCode).emit('filters-ready', { filters: merged })
@@ -111,7 +113,7 @@ io.on('connection', socket => {
     const movieSwipes = room.swipes.get(movieId) || new Map<string, Choice>()
     movieSwipes.set(socket.id, choice)
     room.swipes.set(movieId, movieSwipes)
-    if (room.players.size === 2 && [...room.players].every(id => movieSwipes.get(id) === 'like')) {
+    if (room.players.size >= 2 && [...room.players].every(id => movieSwipes.get(id) === 'like')) {
       io.to(roomCode).emit('match', { movieId })
       room.swipes.delete(movieId)
     }
@@ -124,13 +126,14 @@ io.on('connection', socket => {
     const safeGenres = [...new Set((genreIds || []).filter(id => Number.isInteger(id)))].slice(0, 20)
     const safeMovieIds = [...new Set((movieIds || []).filter(id => typeof id === 'string' && /^(movie|tv)-\d+$/.test(id)))].slice(0, 15)
     room.preferences.set(socket.id, { genreIds: safeGenres, movieIds: safeMovieIds })
-    if (room.preferences.size !== 2) return
-    const [first, second] = [...room.preferences.values()]
-    const shared = first.genreIds.filter(id => second.genreIds.includes(id))
+    if (room.preferences.size !== room.players.size) return
+    const choices = [...room.preferences.values()]
+    const [first, ...others] = choices
+    const shared = first.genreIds.filter(id => others.every(choice => choice.genreIds.includes(id)))
     // If tastes do not overlap, use the combined genres instead of an empty result.
-    const recommendation = shared.length ? shared : [...new Set([...first.genreIds, ...second.genreIds])].slice(0, 4)
-    const matchedMovieIds = first.movieIds.filter(id => second.movieIds.includes(id))
-    const selectedMovieIds = [...new Set([...first.movieIds, ...second.movieIds])]
+    const recommendation = shared.length ? shared : [...new Set(choices.flatMap(choice => choice.genreIds))].slice(0, 4)
+    const matchedMovieIds = first.movieIds.filter(id => others.every(choice => choice.movieIds.includes(id)))
+    const selectedMovieIds = [...new Set(choices.flatMap(choice => choice.movieIds))]
     io.to(roomCode).emit('preferences-ready', { genreIds: recommendation, selectedMovieIds, matchedMovieIds })
   })
 

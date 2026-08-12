@@ -61,8 +61,8 @@ function Room({ code, players, onStart }: { code: string; players: number; onSta
   return <main className="room-page"><nav><div className="brand"><span className="brand-mark">M</span>MovieMatch</div></nav>
     <section className="room-card"><div className="room-icon">✦</div><div className="eyebrow"><span /> Комната создана</div><h1>Позови напарника<br />по кино</h1><p>Отправь ему код — и начинайте выбирать фильм вместе.</p>
     <button className="room-code" onClick={copy}><span>{code}</span><small>{copied ? 'Скопировано!' : 'Нажми, чтобы скопировать'}</small></button>
-    <div className="waiting"><span className={players === 2 ? 'pulse' : ''} />{players === 2 ? 'Напарник подключился!' : 'Ожидаем второго игрока…'}</div>
-    {players === 2 && <button className="demo-link" onClick={onStart}>Настроить общую подборку →</button>}</section></main>
+    <div className="waiting"><span className={players >= 2 ? 'pulse' : ''} />{players >= 2 ? `В комнате ${players} ${players === 2 ? 'человека' : 'человек'}` : 'Ожидаем хотя бы одного участника…'}</div>
+    {players >= 2 && <button className="demo-link" onClick={onStart}>Настроить общую подборку →</button>}</section></main>
 }
 
 /** Lets each person select a small, intentional sample of their taste. */
@@ -83,7 +83,7 @@ function Taste({ movies, onSubmit }: { movies: Movie[]; onSubmit: (genreIds: num
 }
 
 /** The shared card deck. A swipe only emits a choice; the server decides whether it is a match. */
-function Discover({ movies, code, onSwipe }: { movies: Movie[]; code: string; onSwipe: (movie: Movie, choice: 'like' | 'nope') => void }) {
+function Discover({ movies, code, players, onSwipe }: { movies: Movie[]; code: string; players: number; onSwipe: (movie: Movie, choice: 'like' | 'nope') => void }) {
   const [index, setIndex] = useState(0); const [choice, setChoice] = useState<'like' | 'nope' | null>(null); const [dragX, setDragX] = useState(0)
   const startX = useRef<number | null>(null)
   const movie = movies[index % movies.length]
@@ -91,7 +91,7 @@ function Discover({ movies, code, onSwipe }: { movies: Movie[]; code: string; on
   const dragStart = (event: React.PointerEvent<HTMLDivElement>) => { if (choice) return; startX.current = event.clientX; event.currentTarget.setPointerCapture(event.pointerId) }
   const dragMove = (event: React.PointerEvent<HTMLDivElement>) => { if (startX.current !== null) setDragX(Math.max(-150, Math.min(150, event.clientX - startX.current))) }
   const dragEnd = () => { if (startX.current === null) return; const distance = dragX; startX.current = null; if (distance > 85) action('like'); else if (distance < -85) action('nope'); else setDragX(0) }
-  return <main className="discover"><header><div className="brand"><span className="brand-mark">M</span>MovieMatch</div><div className="room-pill"><span className="online" />{code}</div><div className="partner"><span>Выборы</span><div className="mini-avatars"><i>А</i><i>М</i></div></div></header>
+  return <main className="discover"><header><div className="brand"><span className="brand-mark">M</span>MovieMatch</div><div className="room-pill"><span className="online" />{code}</div><div className="partner"><span>{players} участника</span><div className="mini-avatars">{Array.from({ length: players }, (_, index) => <i key={index}>{index + 1}</i>)}</div></div></header>
   <section className="swipe-area"><div className={`movie-card ${choice ?? ''}`} onPointerDown={dragStart} onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd} style={{ '--accent': movie.accent, transform: choice ? undefined : `translateX(${dragX}px) rotate(${dragX / 18}deg)` } as React.CSSProperties}><img src={movie.image} alt={movie.title} draggable={false} /><div className="poster-shade" /><div className="choice-label nope-label" style={{ opacity: dragX < -30 ? Math.min(1, Math.abs(dragX) / 90) : undefined }}>НЕТ</div><div className="choice-label like-label" style={{ opacity: dragX > 30 ? Math.min(1, dragX / 90) : undefined }}>ХОЧУ</div><div className="movie-info"><div className="movie-meta"><span>{movie.year}</span><span className="rating">★ {movie.rating}</span></div><h1>{movie.title}</h1><div className="genres">{movie.genres.map(genre => <span key={genre}>{genre}</span>)}</div><p>{movie.synopsis}</p></div></div>
   <p className="hint">Свайпай карточку или используй кнопки</p><div className="controls"><button className="round nope" aria-label="Не нравится" onClick={() => action('nope')}>×</button><button className="round info" aria-label="Информация">i</button><button className="round like" aria-label="Нравится" onClick={() => action('like')}>♥</button></div></section></main>
 }
@@ -175,7 +175,7 @@ export default function App() {
   if (screen === 'room') return <Room code={code} players={players} onStart={() => setScreen('filters')} />
   if (screen === 'filters') return <Filters filters={filters} setFilters={setFilters} onSubmit={submitFilters} />
   if (screen === 'taste') return <Taste movies={movies} onSubmit={submitTaste} />
-  if (screen === 'discover') return <Discover movies={movies} code={code} onSwipe={sendSwipe} />
+  if (screen === 'discover') return <Discover movies={movies} code={code} players={players} onSwipe={sendSwipe} />
   if (screen === 'match') return <Match movie={matchedMovie} onContinue={() => setScreen('discover')} />
   return <Home onCreate={createRoom} onJoin={joinRoom} />
 }
