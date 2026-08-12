@@ -60,14 +60,14 @@ function Taste({ movies, onSubmit }: { movies: Movie[]; onSubmit: (genreIds: num
   const [submitted, setSubmitted] = useState(false)
   const toggle = (movie: Movie) => setSelected(current => {
     if (current.some(item => item.id === movie.id)) return current.filter(item => item.id !== movie.id)
-    return current.length === 8 ? current : [...current, movie]
+    return current.length === 15 ? current : [...current, movie]
   })
   const submit = () => { setSubmitted(true); onSubmit([...new Set(selected.flatMap(movie => movie.genreIds))]) }
   return <main className="taste-page"><nav><div className="brand"><span className="brand-mark">M</span>MovieMatch</div><span className="tag">ваши предпочтения</span></nav>
-    <section className="taste-content"><div className="eyebrow"><span /> Шаг 1 из 1</div><h1>Что вы любите<br /><em>смотреть?</em></h1><p>Отметь от 5 до 8 фильмов, которые тебе нравятся. Мы найдём общие жанры и подберём варианты для вас двоих.</p>
-    <div className="taste-counter"><b>{selected.length}</b> / 8 выбрано <span>{selected.length < 5 ? `ещё ${5 - selected.length} для продолжения` : 'можно продолжать'}</span></div>
-    <div className="taste-grid">{movies.slice(0, 12).map(movie => <button key={movie.id} className={`taste-card ${selected.some(item => item.id === movie.id) ? 'selected' : ''}`} onClick={() => toggle(movie)}><img src={movie.image} alt="" /><span className="taste-check">✓</span><strong>{movie.title}</strong><small>★ {movie.rating}</small></button>)}</div>
-    <button className="primary taste-submit" disabled={selected.length < 5 || submitted} onClick={submit}>{submitted ? 'Ждём выбор напарника…' : 'Собрать общую подборку'} <b>→</b></button></section></main>
+    <section className="taste-content"><div className="eyebrow"><span /> Необязательный шаг</div><h1>Что вы любите<br /><em>смотреть?</em></h1><p>Отметь до 15 фильмов, которые тебе нравятся. Этот шаг можно пропустить — тогда подборка будет строиться только по фильтрам комнаты.</p>
+    <div className="taste-counter"><b>{selected.length}</b> / 15 выбрано <span>{selected.length ? 'можно продолжать' : 'можно пропустить'}</span></div>
+    <div className="taste-grid">{movies.slice(0, 15).map(movie => <button key={movie.id} className={`taste-card ${selected.some(item => item.id === movie.id) ? 'selected' : ''}`} onClick={() => toggle(movie)}><img src={movie.image} alt="" /><span className="taste-check">✓</span><strong>{movie.title}</strong><small>★ {movie.rating}</small></button>)}</div>
+    <button className="primary taste-submit" disabled={submitted} onClick={submit}>{submitted ? 'Ждём выбор напарника…' : selected.length ? 'Собрать общую подборку' : 'Пропустить этот шаг'} <b>→</b></button></section></main>
 }
 
 /** The shared card deck. A swipe only emits a choice; the server decides whether it is a match. */
