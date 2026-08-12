@@ -108,11 +108,18 @@ export default function App() {
   const [filters, setFilters] = useState<MovieFilters>({ country: 'all', genres: [], kind: 'movie' })
   const [suggestedGenres, setSuggestedGenres] = useState<number[]>([])
   const [selection, setSelection] = useState<MovieSelection>({ page: 1, seed: 1 })
+  // Only the newest request may update the card deck. This prevents an old personal
+  // filter request from overwriting the merged room filters after both users confirm.
+  const movieRequest = useRef(0)
+  const loadMovies = (activeFilters: MovieFilters, activeSelection = selection) => {
+    const requestId = ++movieRequest.current
+    return getPopularMovies(activeFilters, activeSelection).then(films => {
+      if (requestId === movieRequest.current && films.length) setMovies(films)
+    })
+  }
   useEffect(() => {
     const effectiveFilters = { ...filters, genres: filters.genres.length ? filters.genres : suggestedGenres }
-    getPopularMovies(effectiveFilters, selection).then(films => {
-      if (films.length) setMovies(films)
-    }).catch(() => undefined)
+    loadMovies(effectiveFilters, selection).catch(() => undefined)
   }, [filters, selection, suggestedGenres])
   useEffect(() => {
     const handleRoom = ({ players: count }: { players: number }) => setPlayers(count)
@@ -123,12 +130,12 @@ export default function App() {
     const handlePreferences = ({ genreIds }: { genreIds: number[] }) => {
       const effectiveFilters = { ...filters, genres: filters.genres.length ? filters.genres : genreIds }
       setSuggestedGenres(genreIds)
-      getPopularMovies(effectiveFilters, selection).then(films => { if (films.length) setMovies(films) }).catch(() => undefined).finally(() => setScreen('discover'))
+      loadMovies(effectiveFilters, selection).catch(() => undefined).finally(() => setScreen('discover'))
     }
     const handleFilters = ({ filters: mergedFilters }: { filters: MovieFilters }) => {
       setFilters(mergedFilters)
       setSuggestedGenres([])
-      getPopularMovies(mergedFilters, selection).then(films => { if (films.length) setMovies(films) }).catch(() => undefined).finally(() => setScreen('taste'))
+      loadMovies(mergedFilters, selection).catch(() => undefined).finally(() => setScreen('taste'))
     }
     socket.on('room-state', handleRoom)
     socket.on('match', handleMatch)
