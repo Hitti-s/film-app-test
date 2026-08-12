@@ -7,7 +7,8 @@ import { Server } from 'socket.io'
 type Choice = 'like' | 'nope'
 type Filters = { country: 'all' | 'RU' | 'US'; genres: number[]; kind: 'movie' | 'tv' | 'both' }
 type Selection = { page: number; seed: number }
-type Room = { players: Set<string>; swipes: Map<string, Map<string, Choice>>; preferences: Map<string, number[]>; filters: Filters; filterChoices: Map<string, Filters>; filterSubmissions: Set<string>; selection: Selection }
+type Preference = { genreIds: number[]; movieIds: string[] }
+type Room = { players: Set<string>; swipes: Map<string, Map<string, Choice>>; preferences: Map<string, Preference>; filters: Filters; filterChoices: Map<string, Filters>; filterSubmissions: Set<string>; selection: Selection }
 
 // HTTP health check and WebSocket server share the same port.
 const app = express()
@@ -116,18 +117,21 @@ io.on('connection', socket => {
     }
   })
 
-  // When both people have chosen favourites, prefer the genres they share.
-  socket.on('set-preferences', ({ roomCode, genreIds }: { roomCode: string; genreIds: number[] }) => {
+  // When both people have chosen favourites, find instant matches and shared genres.
+  socket.on('set-preferences', ({ roomCode, genreIds, movieIds }: { roomCode: string; genreIds: number[]; movieIds: string[] }) => {
     const room = rooms.get(roomCode)
     if (!room || !room.players.has(socket.id)) return
     const safeGenres = [...new Set((genreIds || []).filter(id => Number.isInteger(id)))].slice(0, 20)
-    room.preferences.set(socket.id, safeGenres)
+    const safeMovieIds = [...new Set((movieIds || []).filter(id => typeof id === 'string' && /^(movie|tv)-\d+$/.test(id)))].slice(0, 15)
+    room.preferences.set(socket.id, { genreIds: safeGenres, movieIds: safeMovieIds })
     if (room.preferences.size !== 2) return
     const [first, second] = [...room.preferences.values()]
-    const shared = first.filter(id => second.includes(id))
+    const shared = first.genreIds.filter(id => second.genreIds.includes(id))
     // If tastes do not overlap, use the combined genres instead of an empty result.
-    const recommendation = shared.length ? shared : [...new Set([...first, ...second])].slice(0, 4)
-    io.to(roomCode).emit('preferences-ready', { genreIds: recommendation })
+    const recommendation = shared.length ? shared : [...new Set([...first.genreIds, ...second.genreIds])].slice(0, 4)
+    const matchedMovieIds = first.movieIds.filter(id => second.movieIds.includes(id))
+    const selectedMovieIds = [...new Set([...first.movieIds, ...second.movieIds])]
+    io.to(roomCode).emit('preferences-ready', { genreIds: recommendation, selectedMovieIds, matchedMovieIds })
   })
 
   socket.on('disconnect', () => {

@@ -66,14 +66,15 @@ function Room({ code, players, onStart }: { code: string; players: number; onSta
 }
 
 /** Lets each person select a small, intentional sample of their taste. */
-function Taste({ movies, onSubmit }: { movies: Movie[]; onSubmit: (genreIds: number[]) => void }) {
+function Taste({ movies, onSubmit }: { movies: Movie[]; onSubmit: (genreIds: number[], movieIds: string[]) => void }) {
   const [selected, setSelected] = useState<Movie[]>([])
   const [submitted, setSubmitted] = useState(false)
   const toggle = (movie: Movie) => setSelected(current => {
     if (current.some(item => item.id === movie.id)) return current.filter(item => item.id !== movie.id)
     return current.length === 15 ? current : [...current, movie]
   })
-  const submit = () => { setSubmitted(true); onSubmit([...new Set(selected.flatMap(movie => movie.genreIds))]) }
+  // Send both genres and exact titles: exact shared titles can become instant matches.
+  const submit = () => { setSubmitted(true); onSubmit([...new Set(selected.flatMap(movie => movie.genreIds))], selected.map(movie => movie.id)) }
   return <main className="taste-page"><nav><div className="brand"><span className="brand-mark">M</span>MovieMatch</div><span className="tag">ваши предпочтения</span></nav>
     <section className="taste-content"><div className="eyebrow"><span /> Необязательный шаг</div><h1>Что вы любите<br /><em>смотреть?</em></h1><p>Отметь до 15 фильмов, которые тебе нравятся. Этот шаг можно пропустить — тогда подборка будет строиться только по фильтрам комнаты.</p>
     <div className="taste-counter"><b>{selected.length}</b> / 15 выбрано <span>{selected.length ? 'можно продолжать' : 'можно пропустить'}</span></div>
@@ -107,14 +108,17 @@ export default function App() {
   const emptyFilters: MovieFilters = { country: 'all', genres: [], kind: 'both' }
   const [filters, setFilters] = useState<MovieFilters>(emptyFilters)
   const [suggestedGenres, setSuggestedGenres] = useState<number[]>([])
+  const [excludedMovieIds, setExcludedMovieIds] = useState<string[]>([])
   const [selection, setSelection] = useState<MovieSelection>({ page: 1, seed: 1 })
   // Only the newest request may update the card deck. This prevents an old personal
   // filter request from overwriting the merged room filters after both users confirm.
   const movieRequest = useRef(0)
-  const loadMovies = (activeFilters: MovieFilters, activeSelection = selection) => {
+  const loadMovies = (activeFilters: MovieFilters, activeSelection = selection, excludedIds = excludedMovieIds) => {
     const requestId = ++movieRequest.current
     return getPopularMovies(activeFilters, activeSelection).then(films => {
-      if (requestId === movieRequest.current && films.length) setMovies(films)
+      // Favourites already used during the initial taste step should not reappear in the deck.
+      const freshFilms = films.filter(movie => !excludedIds.includes(movie.id))
+      if (requestId === movieRequest.current && freshFilms.length) setMovies(freshFilms)
     })
   }
   useEffect(() => {
@@ -127,10 +131,19 @@ export default function App() {
       setMatchedMovie(movies.find(movie => movie.id === movieId) || fallbackMovies[0])
       setScreen('match')
     }
-    const handlePreferences = ({ genreIds }: { genreIds: number[] }) => {
+    const handlePreferences = ({ genreIds, selectedMovieIds, matchedMovieIds }: { genreIds: number[]; selectedMovieIds: string[]; matchedMovieIds: string[] }) => {
       const effectiveFilters = { ...filters, genres: filters.genres.length ? filters.genres : genreIds }
       setSuggestedGenres(genreIds)
-      loadMovies(effectiveFilters, selection).catch(() => undefined).finally(() => setScreen('discover'))
+      setExcludedMovieIds(selectedMovieIds)
+      // A shared favourite is a real match, so show it before starting the fresh recommendation deck.
+      const firstMatch = matchedMovieIds[0]
+      if (firstMatch) {
+        setMatchedMovie(movies.find(movie => movie.id === firstMatch) || fallbackMovies[0])
+        setScreen('match')
+      } else {
+        setScreen('discover')
+      }
+      loadMovies(effectiveFilters, selection, selectedMovieIds).catch(() => undefined)
     }
     const handleFilters = ({ filters: mergedFilters }: { filters: MovieFilters }) => {
       setFilters(mergedFilters)
@@ -157,7 +170,7 @@ export default function App() {
     setScreen('filters')
   })
   const submitFilters = () => socket.emit('set-room-filters', { roomCode: code, filters })
-  const submitTaste = (genreIds: number[]) => socket.emit('set-preferences', { roomCode: code, genreIds })
+  const submitTaste = (genreIds: number[], movieIds: string[]) => socket.emit('set-preferences', { roomCode: code, genreIds, movieIds })
   const sendSwipe = (movie: Movie, choice: 'like' | 'nope') => socket.emit('swipe', { roomCode: code, movieId: movie.id, choice })
   if (screen === 'room') return <Room code={code} players={players} onStart={() => setScreen('filters')} />
   if (screen === 'filters') return <Filters filters={filters} setFilters={setFilters} onSubmit={submitFilters} />
