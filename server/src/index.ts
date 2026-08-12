@@ -19,6 +19,32 @@ const rooms = new Map<string, Room>()
 app.use(cors({ origin: allowedOrigins }))
 app.get('/health', (_request, response) => response.json({ status: 'ok' }))
 
+// Proxies public TMDB discovery requests so the API key never reaches a browser.
+app.get('/api/discover/:kind', async (request, response) => {
+  const kind = request.params.kind
+  const apiKey = process.env.TMDB_API_KEY
+  if (!apiKey) return response.status(500).json({ error: 'TMDB_API_KEY is not configured' })
+  if (kind !== 'movie' && kind !== 'tv') return response.status(400).json({ error: 'Unknown catalog type' })
+
+  const page = Math.max(1, Math.min(500, Number(request.query.page) || 1))
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    language: typeof request.query.language === 'string' ? request.query.language : 'ru-RU',
+    page: String(page),
+    sort_by: 'popularity.desc',
+  })
+  if (request.query.with_origin_country === 'RU' || request.query.with_origin_country === 'US') params.set('with_origin_country', request.query.with_origin_country)
+  if (typeof request.query.with_genres === 'string' && /^[0-9,]+$/.test(request.query.with_genres)) params.set('with_genres', request.query.with_genres)
+
+  try {
+    const tmdbResponse = await fetch(`https://api.themoviedb.org/3/discover/${kind}?${params}`)
+    const body = await tmdbResponse.json()
+    return response.status(tmdbResponse.status).json(body)
+  } catch {
+    return response.status(502).json({ error: 'TMDB is unavailable' })
+  }
+})
+
 // Generates a short code and avoids collisions with rooms still in memory.
 function makeCode() {
   let code = ''

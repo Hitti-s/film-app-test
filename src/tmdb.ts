@@ -58,16 +58,23 @@ function shuffle<T>(items: T[], seed: number): T[] {
 }
 
 export async function getPopularMovies(filters: MovieFilters, selection: MovieSelection = { page: 1, seed: 1 }): Promise<Movie[]> {
+  const serverUrl = import.meta.env.VITE_SERVER_URL?.replace(/\/$/, '')
   const apiKey = import.meta.env.VITE_TMDB_API_KEY
-  if (!apiKey) throw new Error('TMDB API key is not configured')
+  if (!serverUrl && !apiKey) throw new Error('TMDB API key is not configured')
 
   // In mixed mode query both TMDB catalogs, then shuffle their combined result.
   const kinds: Array<'movie' | 'tv'> = filters.kind === 'both' ? ['movie', 'tv'] : [filters.kind]
   const results = await Promise.all(kinds.map(async kind => {
-    const params = new URLSearchParams({ api_key: apiKey, language: 'ru-RU', page: String(selection.page), sort_by: 'popularity.desc' })
+    const params = new URLSearchParams({ language: 'ru-RU', page: String(selection.page), sort_by: 'popularity.desc' })
     if (filters.country !== 'all') params.set('with_origin_country', filters.country)
     if (filters.genres.length) params.set('with_genres', filters.genres.join(','))
-    const response = await fetch(`https://api.themoviedb.org/3/discover/${kind}?${params}`)
+    // In production the app calls our server, keeping the TMDB key out of the browser.
+    const directParams = new URLSearchParams(params)
+    directParams.set('api_key', apiKey || '')
+    const url = serverUrl
+      ? `${serverUrl}/api/discover/${kind}?${params}`
+      : `https://api.themoviedb.org/3/discover/${kind}?${directParams}`
+    const response = await fetch(url)
     if (!response.ok) throw new Error('TMDB request failed')
     const data = await response.json() as { results: TmdbMovie[] }
     return data.results.filter(movie => movie.poster_path || movie.backdrop_path).map((movie, index) => ({
