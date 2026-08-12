@@ -26,8 +26,8 @@ function FilterControls({ filters, setFilters }: { filters: MovieFilters; setFil
   return <div className="filters"><div className="filter-title">Подобрать что посмотреть</div><div className="filter-row"><span>Тип</span><div className="filter-options">{([['movie', 'Фильмы'], ['tv', 'Сериалы'], ['both', 'Всё']] as const).map(([value, label]) => <button key={value} className={filters.kind === value ? 'selected' : ''} onClick={() => setFilters({ ...filters, kind: value })}>{label}</button>)}</div></div><div className="filter-row"><span>Страна</span><div className="filter-options">{([['all', 'Все'], ['RU', 'Россия'], ['US', 'США']] as const).map(([value, label]) => <button key={value} className={filters.country === value ? 'selected' : ''} onClick={() => setFilters({ ...filters, country: value })}>{label}</button>)}</div></div><div className="filter-row genre-row"><span>Жанры</span><div className="filter-options">{availableGenres.map(genre => <button key={genre.id} className={filters.genres.includes(genre.id) ? 'selected' : ''} onClick={() => toggleGenre(genre.id)}>{genre.name}</button>)}</div></div></div>
 }
 
-/** The room entry screen also owns the filters chosen by the room creator. */
-function Home({ onCreate, onJoin, filters, setFilters }: { onCreate: () => void; onJoin: (code: string) => void; filters: MovieFilters; setFilters: (filters: MovieFilters) => void }) {
+/** The room entry screen only creates or joins a room; filters come after both people are present. */
+function Home({ onCreate, onJoin }: { onCreate: () => void; onJoin: (code: string) => void }) {
   const [code, setCode] = useState('')
   return <main className="landing">
     <div className="ambient ambient-one" /><div className="ambient ambient-two" />
@@ -36,7 +36,6 @@ function Home({ onCreate, onJoin, filters, setFilters }: { onCreate: () => void;
       <div className="eyebrow"><span /> Вечер кино без споров</div>
       <h1>Один свайп —<br /><em>общий фильм.</em></h1>
       <p>Выбирайте фильмы вместе с другом. Когда ваши вкусы совпадут — MovieMatch покажет идеальный вариант.</p>
-      <FilterControls filters={filters} setFilters={setFilters} />
       <div className="start-card">
         <button className="primary" onClick={onCreate}>Создать комнату <b>→</b></button>
         <div className="or"><span />или<span /></div>
@@ -105,7 +104,8 @@ export default function App() {
   const [matchedMovie, setMatchedMovie] = useState<Movie>(fallbackMovies[0])
   const [code, setCode] = useState('')
   const [players, setPlayers] = useState(1)
-  const [filters, setFilters] = useState<MovieFilters>({ country: 'all', genres: [], kind: 'movie' })
+  const emptyFilters: MovieFilters = { country: 'all', genres: [], kind: 'both' }
+  const [filters, setFilters] = useState<MovieFilters>(emptyFilters)
   const [suggestedGenres, setSuggestedGenres] = useState<number[]>([])
   const [selection, setSelection] = useState<MovieSelection>({ page: 1, seed: 1 })
   // Only the newest request may update the card deck. This prevents an old personal
@@ -143,15 +143,17 @@ export default function App() {
     socket.on('filters-ready', handleFilters)
     return () => { socket.off('room-state', handleRoom); socket.off('match', handleMatch); socket.off('preferences-ready', handlePreferences); socket.off('filters-ready', handleFilters) }
   }, [movies, filters, selection])
-  const createRoom = () => socket.emit('create-room', filters, (result: { code?: string; selection?: MovieSelection; error?: string }) => {
+  const createRoom = () => socket.emit('create-room', emptyFilters, (result: { code?: string; selection?: MovieSelection; error?: string }) => {
     if (result.error || !result.code) return window.alert(result.error || 'Не удалось создать комнату')
     if (result.selection) setSelection(result.selection)
+    setFilters(emptyFilters); setSuggestedGenres([])
     setCode(result.code); setPlayers(1); setScreen('room')
   })
   const joinRoom = (roomCode: string) => socket.emit('join-room', roomCode, (result: { code?: string; players?: number; filters?: MovieFilters; selection?: MovieSelection; error?: string }) => {
     if (result.error || !result.code) return window.alert(result.error || 'Не удалось войти в комнату')
     setCode(result.code); setPlayers(result.players || 2)
     if (result.selection) setSelection(result.selection)
+    setFilters(emptyFilters); setSuggestedGenres([])
     setScreen('filters')
   })
   const submitFilters = () => socket.emit('set-room-filters', { roomCode: code, filters })
@@ -162,5 +164,5 @@ export default function App() {
   if (screen === 'taste') return <Taste movies={movies} onSubmit={submitTaste} />
   if (screen === 'discover') return <Discover movies={movies} code={code} onSwipe={sendSwipe} />
   if (screen === 'match') return <Match movie={matchedMovie} onContinue={() => setScreen('discover')} />
-  return <Home onCreate={createRoom} onJoin={joinRoom} filters={filters} setFilters={setFilters} />
+  return <Home onCreate={createRoom} onJoin={joinRoom} />
 }
