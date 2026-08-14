@@ -462,6 +462,31 @@ footer span{
   gap:9px
 }
 
+/* Link to the saved shared collection, kept compact for phone headers. */
+.matches-link{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  padding:7px 9px;
+  border:1px solid #393540;
+  border-radius:18px;
+  background:#17161e;
+  color:#f38aa2;
+  font-size:10px;
+  font-weight:700;
+}
+
+.matches-link b{
+  display:grid;
+  place-items:center;
+  min-width:16px;
+  height:16px;
+  border-radius:50%;
+  background:#e4577c;
+  color:white;
+  font-size:9px;
+}
+
 .swipe-area{
   padding:30px 20px 35px;
   display:flex;
@@ -700,6 +725,85 @@ footer span{
   gap:14px
 }
 
+.saved-link,
+.back-link{
+  margin-top:14px;
+  background:none;
+  color:#ec89a1;
+  font-size:12px;
+  font-weight:700;
+}
+
+.saved-page{
+  min-height:100vh;
+  padding:28px max(6vw,28px);
+  background:radial-gradient(circle at 75% 0,#392140 0,transparent 36%),#08080d;
+  color:#f7f5f1;
+}
+
+.saved-page section{
+  width:min(720px,100%);
+  margin:8vh auto;
+}
+
+.saved-page h1{
+  margin:17px 0;
+  font-size:clamp(42px,6vw,70px);
+  letter-spacing:-.07em;
+}
+
+.saved-page h1 em{
+  font-family:Playfair Display,serif;
+  font-weight:600;
+  color:#ffa38d;
+}
+
+.saved-page section>p{
+  color:#aaa6b0;
+  font-size:14px;
+}
+
+.saved-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  margin-top:28px;
+}
+
+.saved-card{
+  display:flex;
+  gap:12px;
+  padding:10px;
+  border:1px solid #302e37;
+  border-radius:14px;
+  background:#16151d;
+}
+
+.saved-card img{
+  width:68px;
+  height:86px;
+  flex:0 0 auto;
+  border-radius:9px;
+  object-fit:cover;
+}
+
+.saved-card span{
+  color:#f5bd70;
+  font:10px 'DM Mono',monospace;
+}
+
+.saved-card h2{
+  margin:7px 0 4px;
+  font-size:15px;
+  letter-spacing:-.04em;
+}
+
+.saved-card p{
+  margin:0;
+  color:#a8a3ad;
+  font-size:11px;
+}
+
 
 @media(max-width:560px){
   .tag,.partner>span{
@@ -745,6 +849,14 @@ footer span{
     margin-left:auto;
   }
 
+  .matches-link{
+    padding:6px 7px;
+  }
+
+  .matches-link span{
+    display:none;
+  }
+
   .mini-avatars i{
     width:20px;
     height:20px;
@@ -781,6 +893,18 @@ footer span{
   .filter-content h1,
   .taste-content h1{
     font-size:40px;
+  }
+
+  .saved-page{
+    padding:20px 16px 32px;
+  }
+
+  .saved-page section{
+    margin-top:6vh;
+  }
+
+  .saved-grid{
+    grid-template-columns:1fr;
   }
 }
 

@@ -83,7 +83,7 @@ function Taste({ movies, onSubmit }: { movies: Movie[]; onSubmit: (genreIds: num
 }
 
 /** The shared card deck. A swipe only emits a choice; the server decides whether it is a match. */
-function Discover({ movies, code, players, onSwipe }: { movies: Movie[]; code: string; players: number; onSwipe: (movie: Movie, choice: 'like' | 'nope') => void }) {
+function Discover({ movies, code, players, matchCount, onOpenMatches, onSwipe }: { movies: Movie[]; code: string; players: number; matchCount: number; onOpenMatches: () => void; onSwipe: (movie: Movie, choice: 'like' | 'nope') => void }) {
   const [index, setIndex] = useState(0); const [choice, setChoice] = useState<'like' | 'nope' | null>(null); const [dragX, setDragX] = useState(0)
   const startX = useRef<number | null>(null)
   const movie = movies[index % movies.length]
@@ -91,16 +91,19 @@ function Discover({ movies, code, players, onSwipe }: { movies: Movie[]; code: s
   const dragStart = (event: React.PointerEvent<HTMLDivElement>) => { if (choice) return; startX.current = event.clientX; event.currentTarget.setPointerCapture(event.pointerId) }
   const dragMove = (event: React.PointerEvent<HTMLDivElement>) => { if (startX.current !== null) setDragX(Math.max(-150, Math.min(150, event.clientX - startX.current))) }
   const dragEnd = () => { if (startX.current === null) return; const distance = dragX; startX.current = null; if (distance > 85) action('like'); else if (distance < -85) action('nope'); else setDragX(0) }
-  return <main className="discover"><header><div className="brand"><span className="brand-mark">M</span>MovieMatch</div><div className="room-pill"><span className="online" />{code}</div><div className="partner"><span>{players} участника</span><div className="mini-avatars">{Array.from({ length: players }, (_, index) => <i key={index}>{index + 1}</i>)}</div></div></header>
+  return <main className="discover"><header><div className="brand"><span className="brand-mark">M</span>MovieMatch</div><div className="room-pill"><span className="online" />{code}</div><button className="matches-link" onClick={onOpenMatches}>♥ <span>Мэтчи</span>{matchCount ? <b>{matchCount}</b> : null}</button><div className="partner"><span>{players} участника</span><div className="mini-avatars">{Array.from({ length: players }, (_, index) => <i key={index}>{index + 1}</i>)}</div></div></header>
   <section className="swipe-area"><div className={`movie-card ${choice ?? ''}`} onPointerDown={dragStart} onPointerMove={dragMove} onPointerUp={dragEnd} onPointerCancel={dragEnd} style={{ '--accent': movie.accent, transform: choice ? undefined : `translateX(${dragX}px) rotate(${dragX / 18}deg)` } as React.CSSProperties}><img src={movie.image} alt={movie.title} draggable={false} /><div className="poster-shade" /><div className="choice-label nope-label" style={{ opacity: dragX < -30 ? Math.min(1, Math.abs(dragX) / 90) : undefined }}>НЕТ</div><div className="choice-label like-label" style={{ opacity: dragX > 30 ? Math.min(1, dragX / 90) : undefined }}>ХОЧУ</div><div className="movie-info"><div className="movie-meta"><span>{movie.year}</span><span className="rating">★ {movie.rating}</span></div><h1>{movie.title}</h1><div className="genres">{movie.genres.map(genre => <span key={genre}>{genre}</span>)}</div><p>{movie.synopsis}</p></div></div>
   <p className="hint">Свайпай карточку или используй кнопки</p><div className="controls"><button className="round nope" aria-label="Не нравится" onClick={() => action('nope')}>×</button><button className="round info" aria-label="Информация">i</button><button className="round like" aria-label="Нравится" onClick={() => action('like')}>♥</button></div></section></main>
 }
 
-function Match({ movie, onContinue }: { movie: Movie; onContinue: () => void }) { return <main className="match"><div className="confetti">✦　·　✦　·　✦</div><section><div className="match-label">Это мэтч!</div><h1>Ваш вечер<br /><em>определён.</em></h1><div className="match-movie"><img src={movie.image} alt="" /><div><span>{movie.year} · ★ {movie.rating}</span><h2>{movie.title}</h2><p>Вам обоим понравился этот фильм</p></div></div><button className="primary" onClick={onContinue}>Продолжить искать <b>→</b></button></section></main> }
+function Match({ movie, onContinue, onOpenMatches }: { movie: Movie; onContinue: () => void; onOpenMatches: () => void }) { return <main className="match"><div className="confetti">✦　·　✦　·　✦</div><section><div className="match-label">Это мэтч!</div><h1>Ваш вечер<br /><em>определён.</em></h1><div className="match-movie"><img src={movie.image} alt="" /><div><span>{movie.year} · ★ {movie.rating}</span><h2>{movie.title}</h2><p>Вам всем понравился этот фильм</p></div></div><button className="primary" onClick={onContinue}>Продолжить искать <b>→</b></button><button className="saved-link" onClick={onOpenMatches}>Открыть общую подборку</button></section></main> }
+
+/** Shared room collection; IDs come from the server, details are cached in each browser. */
+function SavedMatches({ movies, onBack }: { movies: Movie[]; onBack: () => void }) { return <main className="saved-page"><nav><div className="brand"><span className="brand-mark">M</span>MovieMatch</div><button className="back-link" onClick={onBack}>← Назад к выбору</button></nav><section><div className="eyebrow"><span /> Общая подборка</div><h1>Ваши <em>мэтчи</em></h1><p>{movies.length ? 'Фильмы и сериалы, которые понравились всем участникам комнаты.' : 'Пока нет совпадений. Продолжайте выбирать!'}</p><div className="saved-grid">{movies.map(movie => <article key={movie.id} className="saved-card"><img src={movie.image} alt="" /><div><span>{movie.year} · ★ {movie.rating}</span><h2>{movie.title}</h2><p>{movie.genres.join(' · ')}</p></div></article>)}</div></section></main> }
 
 /** Coordinates screens, shared room state, and all Socket.IO events. */
 export default function App() {
-  const [screen, setScreen] = useState<'home' | 'room' | 'filters' | 'taste' | 'discover' | 'match'>('home')
+  const [screen, setScreen] = useState<'home' | 'room' | 'filters' | 'taste' | 'discover' | 'match' | 'saved'>('home')
   const [movies, setMovies] = useState<Movie[]>(fallbackMovies)
   const [matchedMovie, setMatchedMovie] = useState<Movie>(fallbackMovies[0])
   const [code, setCode] = useState('')
@@ -108,6 +111,8 @@ export default function App() {
   const emptyFilters: MovieFilters = { country: 'all', genres: [], kind: 'both' }
   const [filters, setFilters] = useState<MovieFilters>(emptyFilters)
   const [suggestedGenres, setSuggestedGenres] = useState<number[]>([])
+  const [matchedIds, setMatchedIds] = useState<string[]>([])
+  const [movieCache, setMovieCache] = useState<Record<string, Movie>>({})
   const [excludedMovieIds, setExcludedMovieIds] = useState<string[]>([])
   const [selection, setSelection] = useState<MovieSelection>({ page: 1, seed: 1 })
   // Only the newest request may update the card deck. This prevents an old personal
@@ -122,15 +127,20 @@ export default function App() {
     })
   }
   useEffect(() => {
+    setMovieCache(current => ({ ...current, ...Object.fromEntries(movies.map(movie => [movie.id, movie])) }))
+  }, [movies])
+  useEffect(() => {
     const effectiveFilters = { ...filters, genres: filters.genres.length ? filters.genres : suggestedGenres }
     loadMovies(effectiveFilters, selection).catch(() => undefined)
   }, [filters, selection, suggestedGenres])
   useEffect(() => {
     const handleRoom = ({ players: count }: { players: number }) => setPlayers(count)
     const handleMatch = ({ movieId }: { movieId: string }) => {
+      setMatchedIds(current => current.includes(movieId) ? current : [...current, movieId])
       setMatchedMovie(movies.find(movie => movie.id === movieId) || fallbackMovies[0])
       setScreen('match')
     }
+    const handleMatches = ({ movieIds }: { movieIds: string[] }) => setMatchedIds(movieIds)
     const handlePreferences = ({ genreIds, selectedMovieIds, matchedMovieIds }: { genreIds: number[]; selectedMovieIds: string[]; matchedMovieIds: string[] }) => {
       const effectiveFilters = { ...filters, genres: filters.genres.length ? filters.genres : genreIds }
       setSuggestedGenres(genreIds)
@@ -138,6 +148,7 @@ export default function App() {
       // A shared favourite is a real match, so show it before starting the fresh recommendation deck.
       const firstMatch = matchedMovieIds[0]
       if (firstMatch) {
+        setMatchedIds(current => [...new Set([...current, ...matchedMovieIds])])
         setMatchedMovie(movies.find(movie => movie.id === firstMatch) || fallbackMovies[0])
         setScreen('match')
       } else {
@@ -154,7 +165,8 @@ export default function App() {
     socket.on('match', handleMatch)
     socket.on('preferences-ready', handlePreferences)
     socket.on('filters-ready', handleFilters)
-    return () => { socket.off('room-state', handleRoom); socket.off('match', handleMatch); socket.off('preferences-ready', handlePreferences); socket.off('filters-ready', handleFilters) }
+    socket.on('matches-updated', handleMatches)
+    return () => { socket.off('room-state', handleRoom); socket.off('match', handleMatch); socket.off('preferences-ready', handlePreferences); socket.off('filters-ready', handleFilters); socket.off('matches-updated', handleMatches) }
   }, [movies, filters, selection])
   const createRoom = () => socket.emit('create-room', emptyFilters, (result: { code?: string; selection?: MovieSelection; error?: string }) => {
     if (result.error || !result.code) return window.alert(result.error || 'Не удалось создать комнату')
@@ -162,9 +174,10 @@ export default function App() {
     setFilters(emptyFilters); setSuggestedGenres([])
     setCode(result.code); setPlayers(1); setScreen('room')
   })
-  const joinRoom = (roomCode: string) => socket.emit('join-room', roomCode, (result: { code?: string; players?: number; filters?: MovieFilters; selection?: MovieSelection; error?: string }) => {
+  const joinRoom = (roomCode: string) => socket.emit('join-room', roomCode, (result: { code?: string; players?: number; matchIds?: string[]; filters?: MovieFilters; selection?: MovieSelection; error?: string }) => {
     if (result.error || !result.code) return window.alert(result.error || 'Не удалось войти в комнату')
     setCode(result.code); setPlayers(result.players || 2)
+    setMatchedIds(result.matchIds || [])
     if (result.selection) setSelection(result.selection)
     setFilters(emptyFilters); setSuggestedGenres([])
     setScreen('filters')
@@ -175,7 +188,9 @@ export default function App() {
   if (screen === 'room') return <Room code={code} players={players} onStart={() => setScreen('filters')} />
   if (screen === 'filters') return <Filters filters={filters} setFilters={setFilters} onSubmit={submitFilters} />
   if (screen === 'taste') return <Taste movies={movies} onSubmit={submitTaste} />
-  if (screen === 'discover') return <Discover movies={movies} code={code} players={players} onSwipe={sendSwipe} />
-  if (screen === 'match') return <Match movie={matchedMovie} onContinue={() => setScreen('discover')} />
+  const savedMovies = matchedIds.map(id => movieCache[id]).filter((movie): movie is Movie => Boolean(movie))
+  if (screen === 'discover') return <Discover movies={movies} code={code} players={players} matchCount={matchedIds.length} onOpenMatches={() => setScreen('saved')} onSwipe={sendSwipe} />
+  if (screen === 'match') return <Match movie={matchedMovie} onContinue={() => setScreen('discover')} onOpenMatches={() => setScreen('saved')} />
+  if (screen === 'saved') return <SavedMatches movies={savedMovies} onBack={() => setScreen('discover')} />
   return <Home onCreate={createRoom} onJoin={joinRoom} />
 }

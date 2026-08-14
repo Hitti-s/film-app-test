@@ -9,7 +9,7 @@ const MAX_PLAYERS = 5
 type Filters = { country: 'all' | 'RU' | 'US'; genres: number[]; kind: 'movie' | 'tv' | 'both' }
 type Selection = { page: number; seed: number }
 type Preference = { genreIds: number[]; movieIds: string[] }
-type Room = { players: Set<string>; swipes: Map<string, Map<string, Choice>>; preferences: Map<string, Preference>; filters: Filters; filterChoices: Map<string, Filters>; filterSubmissions: Set<string>; selection: Selection }
+type Room = { players: Set<string>; swipes: Map<string, Map<string, Choice>>; matches: Set<string>; preferences: Map<string, Preference>; filters: Filters; filterChoices: Map<string, Filters>; filterSubmissions: Set<string>; selection: Selection }
 
 // HTTP health check and WebSocket server share the same port.
 const app = express()
@@ -66,7 +66,7 @@ io.on('connection', socket => {
     const code = makeCode()
     const safeFilters: Filters = { country: ['all', 'RU', 'US'].includes(filters?.country) ? filters.country : 'all', genres: (filters?.genres || []).filter(id => Number.isInteger(id)).slice(0, 8), kind: ['movie', 'tv', 'both'].includes(filters?.kind) ? filters.kind : 'movie' }
     const selection: Selection = { page: Math.floor(Math.random() * 20) + 1, seed: Math.floor(Math.random() * 2 ** 31) }
-    rooms.set(code, { players: new Set([socket.id]), swipes: new Map(), preferences: new Map(), filterChoices: new Map([[socket.id, safeFilters]]), filterSubmissions: new Set(), filters: safeFilters, selection })
+    rooms.set(code, { players: new Set([socket.id]), swipes: new Map(), matches: new Set(), preferences: new Map(), filterChoices: new Map([[socket.id, safeFilters]]), filterSubmissions: new Set(), filters: safeFilters, selection })
     socket.join(code)
     socket.data.roomCode = code
     reply({ code, selection })
@@ -81,7 +81,7 @@ io.on('connection', socket => {
     room.players.add(socket.id)
     socket.join(code)
     socket.data.roomCode = code
-    reply({ code, players: room.players.size, filters: room.filters, selection: room.selection })
+    reply({ code, players: room.players.size, matchIds: [...room.matches], filters: room.filters, selection: room.selection })
     broadcastRoom(code)
   })
 
@@ -114,7 +114,9 @@ io.on('connection', socket => {
     movieSwipes.set(socket.id, choice)
     room.swipes.set(movieId, movieSwipes)
     if (room.players.size >= 2 && [...room.players].every(id => movieSwipes.get(id) === 'like')) {
+      room.matches.add(movieId)
       io.to(roomCode).emit('match', { movieId })
+      io.to(roomCode).emit('matches-updated', { movieIds: [...room.matches] })
       room.swipes.delete(movieId)
     }
   })
@@ -134,7 +136,9 @@ io.on('connection', socket => {
     const recommendation = shared.length ? shared : [...new Set(choices.flatMap(choice => choice.genreIds))].slice(0, 4)
     const matchedMovieIds = first.movieIds.filter(id => others.every(choice => choice.movieIds.includes(id)))
     const selectedMovieIds = [...new Set(choices.flatMap(choice => choice.movieIds))]
+    matchedMovieIds.forEach(id => room.matches.add(id))
     io.to(roomCode).emit('preferences-ready', { genreIds: recommendation, selectedMovieIds, matchedMovieIds })
+    io.to(roomCode).emit('matches-updated', { movieIds: [...room.matches] })
   })
 
   socket.on('disconnect', () => {
